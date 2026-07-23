@@ -1,0 +1,18 @@
+Name: Anthropic native PKCE OAuth exists
+Keywords: anthropic, oauth, pkce, run_hermes_oauth_login_pure, credential_pool, hermes_pkce
+FilePathReference: agent/anthropic_adapter.py:1391-1574; hermes_cli/auth_commands.py:224-248
+Short Description: Hermes already has a working native Anthropic PKCE OAuth flow, unused by `hermes model`.
+---
+CRITICAL: hermes-agent already implements a full native (Hermes-not-external-CLI) PKCE OAuth flow for Anthropic Claude Pro/Max, structurally identical to what a "new Anthropic OAuth provider" task would ask to build. Two DISTINCT Anthropic OAuth code paths coexist:
+
+PATH A (legacy/default, reachable via `hermes model` -> provider "anthropic" -> choice "1"):
+- hermes_cli/model_setup_flows.py:2912 `_model_flow_anthropic()` calls
+- hermes_cli/main.py:4311 `_run_anthropic_oauth_flow()` which shells out to the external `claude` CLI binary (`claude setup-token`, agent/anthropic_adapter.py:1348 `run_oauth_setup_token()`). Requires `npm install -g @anthropic-ai/claude-code`. Reads tokens back from `~/.claude/.credentials.json` (Claude Code's own file) or asks user to paste a `sk-ant-oat-...` setup-token string. This is NOT PKCE done by Hermes itself — Claude Code CLI does the PKCE dance externally.
+
+PATH B (native Hermes PKCE, reachable only via `hermes auth add anthropic --auth-type oauth` or the interactive `hermes auth add` picker with OAuth choice):
+- hermes_cli/auth_commands.py:224-248 `auth_add_command()` special-cases `provider == "anthropic"`, calls `agent.anthropic_adapter.run_hermes_oauth_login_pure()` (agent/anthropic_adapter.py:1434-1561).
+- `run_hermes_oauth_login_pure()`: generates PKCE verifier/challenge via `_generate_pkce()` (S256, anthropic_adapter.py:1421-1431); builds auth URL `https://claude.ai/oauth/authorize?...` with `client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e` (anthropic_adapter.py:1395), `redirect_uri=https://console.anthropic.com/oauth/code/callback` (line 1415), `scope="org:create_api_key user:profile user:inference"` (line 1416); opens browser via `webbrowser.open`; prompts `input("Authorization code: ")`; parses `code#state` format; validates state (CSRF); POSTs JSON to `https://platform.claude.com/v1/oauth/token` (fallback `https://console.anthropic.com/v1/oauth/token`) with `grant_type=authorization_code, client_id, code, state, redirect_uri, code_verifier`; User-Agent MUST be non-"claude-code/" prefixed (uses `axios/1.7.9`) or Anthropic 429s it (documented anthropic_adapter.py:1406-1414).
+- Result persisted into credential_pool (auth.json `credential_pool.anthropic`) as a `PooledCredential` with `source="manual:hermes_pkce"`, NOT written to the separate `~/.hermes/.anthropic_oauth.json` file by the CLI path (that file is instead written by hermes_cli/web_server.py's dashboard OAuth callback, a different HTTP-based flow at web_server.py:10093-10241).
+- Refresh: `refresh_anthropic_oauth_pure(refresh_token, use_json=True_if_hermes_pkce)` (anthropic_adapter.py:1036-1097) POSTs to same token URLs with `grant_type=refresh_token`; wired into generic refresh dispatcher agent/credential_pool.py:1143-1155 (`_refresh_entry_impl`) and expiry check agent/credential_pool.py:1527-1530 (`_entry_needs_refresh`: `expires_at_ms <= now_ms + 120_000`).
+
+IMPLICATION for a new "Anthropic Claude Pro/Max OAuth" provider task: the native PKCE building blocks already exist and work — the gap is that `hermes model`'s interactive flow (Path A) doesn't call Path B. Wiring Path B into `_model_flow_anthropic()` (or making it the default "1. Claude Pro/Max subscription" choice instead of shelling to `claude setup-token`) may BE the actual task, not building PKCE from scratch.

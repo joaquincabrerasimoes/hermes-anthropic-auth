@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hermes-anthropic-auth"
+version = "0.1.0"
+description = "Fixes Anthropic's false-positive \"out of extra usage\" billing block for Claude Pro/Max OAuth traffic in Hermes Agent"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.14"
+authors = [{ name = "hermes-anthropic-auth contributors" }]
+keywords = ["hermes-agent", "anthropic", "claude", "oauth", "plugin"]
+dependencies = [
+    "httpx>=0.27,<1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/joaquincabrerasimoes/hermes-anthropic-auth"
+Issues = "https://github.com/joaquincabrerasimoes/hermes-anthropic-auth/issues"
+
+[project.entry-points."hermes_agent.plugins"]
+hermes-anthropic-auth = "hermes_anthropic_auth"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hermes_anthropic_auth"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
