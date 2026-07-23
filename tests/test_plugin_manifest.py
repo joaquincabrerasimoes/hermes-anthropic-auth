@@ -1,7 +1,7 @@
 """Keeps the two install methods in sync.
 
-``src/hermes_anthropic_auth/plugin.yaml`` (directory-style install, Method B
-in the README) and ``pyproject.toml``'s entry-point (pip install, Method A)
+``hermes_anthropic_auth/plugin.yaml`` (directory-style install, Method B in
+the README) and ``pyproject.toml``'s entry-point (pip install, Method A)
 must agree on plugin name/version — otherwise `hermes plugins enable
 hermes-anthropic-auth` would resolve to two different ids depending on which
 install method a user picked.
@@ -19,7 +19,7 @@ yaml = pytest.importorskip(
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PLUGIN_YAML = REPO_ROOT / "src" / "hermes_anthropic_auth" / "plugin.yaml"
+PLUGIN_YAML = REPO_ROOT / "hermes_anthropic_auth" / "plugin.yaml"
 PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
 
 
@@ -33,7 +33,7 @@ def _load_pyproject() -> dict:
 
 def test_plugin_yaml_exists_and_parses():
     assert PLUGIN_YAML.exists(), (
-        "src/hermes_anthropic_auth/plugin.yaml is required for the "
+        "hermes_anthropic_auth/plugin.yaml is required for the "
         "directory-style install method (README Method B) to work — "
         "the directory-plugin discovery scanner requires plugin.yaml "
         "directly alongside __init__.py."

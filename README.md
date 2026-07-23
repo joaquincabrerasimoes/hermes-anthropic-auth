@@ -91,25 +91,33 @@ Rebuild + recreate whenever you pull a newer upstream `nousresearch/hermes-agent
 
 ### Method B — directory (drop-in, no pip, no rebuild)
 
-The plugin's package folder (`src/hermes_anthropic_auth/`) is *also* a valid flat directory-style plugin — it already ships its own `plugin.yaml` alongside `__init__.py`. Hermes's own `httpx` dependency (already required by Hermes itself) covers this method's only import — nothing else to install.
-
-**Bare metal:**
+The plugin's package folder (`hermes_anthropic_auth/`, at repo root) is *also* a valid flat directory-style plugin — it ships its own `plugin.yaml` alongside `__init__.py`. Hermes's directory-plugin scanner recurses exactly one level looking for `plugin.yaml`, and that's exactly how deep this folder sits under the repo root — so **you can clone the whole repo directly as the plugin folder**, no need to fish out a subfolder:
 
 ```bash
-git clone https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git /tmp/hermes-anthropic-auth
 mkdir -p ~/.hermes/plugins
-cp -r /tmp/hermes-anthropic-auth/src/hermes_anthropic_auth ~/.hermes/plugins/hermes-anthropic-auth
+git clone https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git ~/.hermes/plugins/hermes-anthropic-auth
 hermes plugins enable hermes-anthropic-auth
 ```
 
-(Symlink instead of `cp -r` if you want `git pull` in the clone to update the live plugin without re-copying.)
+> [!IMPORTANT]
+> The folder you clone/copy into `~/.hermes/plugins/` must resolve `plugin.yaml` within **one** level of nesting — either the whole repo (`plugin.yaml` at `<folder>/hermes_anthropic_auth/plugin.yaml`, one level deep ✓) or just the inner `hermes_anthropic_auth/` folder copied on its own (`plugin.yaml` right at the top ✓). Don't nest it any deeper than that (e.g. don't put the whole repo *inside* another wrapper folder) — Hermes's scanner won't find it and `hermes plugins enable` will fail with "not installed or bundled".
 
-**Docker:** `/opt/data` (your bind-mounted `~/.hermes`) is the one persistent, writable volume — and `plugins/` lives there, so this needs zero image rebuild. Run the same clone + copy on the **host**, then restart the container:
+If you'd rather keep `/opt/data/plugins/` lean (no `tests/`, `README.md`, etc. alongside the actual code), copy just the inner folder instead:
 
 ```bash
-git clone https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git /tmp/hermes-anthropic-auth
+git clone --depth 1 https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git /tmp/hermes-anthropic-auth
+cp -r /tmp/hermes-anthropic-auth/hermes_anthropic_auth ~/.hermes/plugins/hermes-anthropic-auth
+rm -rf /tmp/hermes-anthropic-auth
+hermes plugins enable hermes-anthropic-auth
+```
+
+Either way works identically — same `plugin.yaml`, same `name:`, same enable/disable id. Use a full `git clone` (not `--depth 1`) if you want `git pull` to update the plugin in place later.
+
+**Docker:** `/opt/data` (your bind-mounted `~/.hermes`) is the one persistent, writable volume — and `plugins/` lives there, so this needs zero image rebuild. Run either of the two recipes above on the **host** (not inside the container), then restart the container:
+
+```bash
 mkdir -p ~/.hermes/plugins
-cp -r /tmp/hermes-anthropic-auth/src/hermes_anthropic_auth ~/.hermes/plugins/hermes-anthropic-auth
+git clone https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git ~/.hermes/plugins/hermes-anthropic-auth
 docker restart hermes
 docker exec hermes hermes plugins enable hermes-anthropic-auth
 ```
@@ -142,7 +150,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Tests use fake stand-ins for `agent.anthropic_adapter` (see `tests/conftest.py`) so the suite runs without needing the real hermes-agent package installed. `tests/test_billing_header.py` includes the exact test vectors from `opencode-anthropic-auth`'s `cch.test.ts` — same input, same hash output, verifying the Python port is byte-for-byte faithful to the reverse-engineered algorithm. `tests/test_plugin_manifest.py` asserts `src/hermes_anthropic_auth/plugin.yaml` and `pyproject.toml` never drift apart on plugin name/version — both install methods (Method A and B above) must resolve to the exact same plugin id.
+Tests use fake stand-ins for `agent.anthropic_adapter` (see `tests/conftest.py`) so the suite runs without needing the real hermes-agent package installed. `tests/test_billing_header.py` includes the exact test vectors from `opencode-anthropic-auth`'s `cch.test.ts` — same input, same hash output, verifying the Python port is byte-for-byte faithful to the reverse-engineered algorithm. `tests/test_plugin_manifest.py` asserts `hermes_anthropic_auth/plugin.yaml` and `pyproject.toml` never drift apart on plugin name/version — both install methods (Method A and B above) must resolve to the exact same plugin id. `tests/test_directory_style_loading.py` simulates Hermes's actual directory-plugin scanner (depth-limited `plugin.yaml` search + `importlib` package loading) against synthetic and real trees, proving Method B — including a whole-repo clone — is discoverable and loadable.
 
 ## License
 

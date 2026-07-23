@@ -29,7 +29,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/hermes_anthropic_auth"]
+packages = ["hermes_anthropic_auth"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
