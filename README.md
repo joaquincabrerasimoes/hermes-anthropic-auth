@@ -46,25 +46,86 @@ If anything in the rewrite path throws, it fails open — the original, unmodifi
 
 ## Install
 
+Two supported install methods. Both register under the same plugin id (`hermes-anthropic-auth`), so enabling, disabling, and the diagnostic command work identically either way — pick based on your setup.
+
+| Method | Best for | Docker rebuild needed? |
+|---|---|---|
+| **A — pip** | Bare-metal / venv installs; also the right choice for Docker if you're comfortable maintaining a small derived image | Yes, once (baked into the image) |
+| **B — directory** | Docker without maintaining a derived image; quick trials anywhere | No — drop-in, picked up on next restart |
+
+Hermes's plugin system is opt-in either way: installing the files (via either method) is not enough on its own, you always still need `hermes plugins enable hermes-anthropic-auth`.
+
+### Method A — pip (entry-point plugin)
+
+**Bare metal / venv:**
+
 ```bash
 pip install hermes-anthropic-auth
 hermes plugins enable hermes-anthropic-auth
 ```
 
-Pip-installed ("entry-point") plugins are opt-in in Hermes — installing alone isn't enough, you also need the `enable` step. Restart Hermes (or start a new session) afterward.
+(Not yet on PyPI? Install straight from GitHub: `pip install "git+https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git"`.)
 
-Verify it's active:
+**Docker:** the official image's `/opt/hermes` (where the Python venv lives) is root-owned, read-only at runtime, and has lazy installs disabled by design — `docker exec ... pip install` will not work or persist. Build a small derived image instead (this is Hermes's own documented pattern for durable installs, just swapped from an apt package to ours):
+
+```dockerfile
+# Dockerfile
+FROM nousresearch/hermes-agent:latest
+USER root
+RUN /opt/hermes/.venv/bin/python -m pip install --no-cache-dir \
+    "git+https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git"
+USER hermes
+```
+
+```bash
+docker build -t hermes-agent-fixed:latest .
+```
+
+Then swap `nousresearch/hermes-agent:latest` → `hermes-agent-fixed:latest` in your `docker run` command or `docker-compose.yml` (volumes/ports/env stay unchanged), recreate the container, then enable it:
+
+```bash
+docker exec hermes hermes plugins enable hermes-anthropic-auth
+```
+
+Rebuild + recreate whenever you pull a newer upstream `nousresearch/hermes-agent`.
+
+### Method B — directory (drop-in, no pip, no rebuild)
+
+The plugin's package folder (`src/hermes_anthropic_auth/`) is *also* a valid flat directory-style plugin — it already ships its own `plugin.yaml` alongside `__init__.py`. Hermes's own `httpx` dependency (already required by Hermes itself) covers this method's only import — nothing else to install.
+
+**Bare metal:**
+
+```bash
+git clone https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git /tmp/hermes-anthropic-auth
+mkdir -p ~/.hermes/plugins
+cp -r /tmp/hermes-anthropic-auth/src/hermes_anthropic_auth ~/.hermes/plugins/hermes-anthropic-auth
+hermes plugins enable hermes-anthropic-auth
+```
+
+(Symlink instead of `cp -r` if you want `git pull` in the clone to update the live plugin without re-copying.)
+
+**Docker:** `/opt/data` (your bind-mounted `~/.hermes`) is the one persistent, writable volume — and `plugins/` lives there, so this needs zero image rebuild. Run the same clone + copy on the **host**, then restart the container:
+
+```bash
+git clone https://github.com/joaquincabrerasimoes/hermes-anthropic-auth.git /tmp/hermes-anthropic-auth
+mkdir -p ~/.hermes/plugins
+cp -r /tmp/hermes-anthropic-auth/src/hermes_anthropic_auth ~/.hermes/plugins/hermes-anthropic-auth
+docker restart hermes
+docker exec hermes hermes plugins enable hermes-anthropic-auth
+```
+
+### Verify (either method)
 
 ```bash
 hermes anthropic-oauth-fix status
 ```
-
 ```
 hermes-anthropic-auth
   patch installed: yes
   example billing header: x-anthropic-billing-header: cc_version=2.1.87.6ff; cc_entrypoint=sdk-cli; cch=4ffc3;
   Active for OAuth (Claude Pro/Max) requests only — plain API key traffic is untouched.
 ```
+(Prefix with `docker exec hermes` if running in Docker.)
 
 If you haven't logged in with Claude Pro/Max yet, see the [native OAuth flow](https://hermes-agent.nousresearch.com/docs/developer-guide/adding-providers) — `hermes auth add anthropic --type oauth`, then set your model with `--provider anthropic --model claude-sonnet-4-6` or in `~/.hermes/config.yaml`. This plugin doesn't handle login; it only fixes what happens to requests after you're already authenticated.
 
@@ -81,7 +142,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Tests use fake stand-ins for `agent.anthropic_adapter` (see `tests/conftest.py`) so the suite runs without needing the real hermes-agent package installed. `tests/test_billing_header.py` includes the exact test vectors from `opencode-anthropic-auth`'s `cch.test.ts` — same input, same hash output, verifying the Python port is byte-for-byte faithful to the reverse-engineered algorithm.
+Tests use fake stand-ins for `agent.anthropic_adapter` (see `tests/conftest.py`) so the suite runs without needing the real hermes-agent package installed. `tests/test_billing_header.py` includes the exact test vectors from `opencode-anthropic-auth`'s `cch.test.ts` — same input, same hash output, verifying the Python port is byte-for-byte faithful to the reverse-engineered algorithm. `tests/test_plugin_manifest.py` asserts `src/hermes_anthropic_auth/plugin.yaml` and `pyproject.toml` never drift apart on plugin name/version — both install methods (Method A and B above) must resolve to the exact same plugin id.
 
 ## License
 

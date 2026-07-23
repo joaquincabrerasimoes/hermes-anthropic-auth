@@ -1,0 +1,9 @@
+name: hermes-anthropic-auth
+version: "0.1.0"
+description: >-
+  Fixes Anthropic's false-positive "out of extra usage" billing block for
+  Claude Pro/Max OAuth traffic by patching build_anthropic_client() to inject
+  the missing Claude Code billing-header fingerprint and extend
+  system-prompt/tool-description sanitization.
+author: hermes-anthropic-auth contributors
+kind: standalone

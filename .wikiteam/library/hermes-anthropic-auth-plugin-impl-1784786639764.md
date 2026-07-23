@@ -5,7 +5,9 @@ Short Description: Pip plugin monkey-patches build_anthropic_client to fix false
 ---
 ## What this project is
 
-hermes-anthropic-auth: pip-installable Hermes Agent plugin fixing a real production bug — Anthropic's server-side classifier false-positive-blocks Hermes's native Claude Pro/Max OAuth traffic with a misleading HTTP 400 "You're out of extra usage" error, because Hermes's own OAuth request fingerprinting is incomplete compared to genuine Claude Code.
+hermes-anthropic-auth: Hermes Agent plugin fixing a real production bug — Anthropic's server-side classifier false-positive-blocks Hermes's native Claude Pro/Max OAuth traffic with a misleading HTTP 400 "You're out of extra usage" error, because Hermes's own OAuth request fingerprinting is incomplete compared to genuine Claude Code.
+
+**Ships with TWO supported install methods, both tested, both resolve to the same plugin id** (see "Dual install methods" section below — added after initial build, in response to a Docker deployment question).
 
 ## Critical prerequisite finding (do not re-litigate)
 
@@ -31,12 +33,13 @@ Wrapping mechanism: reach into the SDK client's `._client` (confirmed httpx.Clie
 
 httpx pinned exact `0.28.1` in hermes-agent (`pyproject.toml:44`, `uv.lock:1979`). Our plugin declares `httpx>=0.27,<1.0` (BaseTransport API stable across that range).
 
-## Package structure (built, tested, all 43 tests passing)
+## Package structure (built, tested, 50/50 tests passing)
 
 ```
 hermes-anthropic-auth/
 ├── pyproject.toml          # hatchling, entry-point group "hermes_agent.plugins" = "hermes_anthropic_auth"
 ├── src/hermes_anthropic_auth/
+│   ├── plugin.yaml          # kind: standalone — makes this SAME folder also a valid directory-style plugin
 │   ├── __init__.py         # register(ctx) — calls patch.install(), registers optional CLI diagnostic
 │   ├── billing_header.py   # ported cch.ts verbatim — compute_cch, compute_version_suffix, build_billing_header_value
 │   ├── sanitize.py         # PARAGRAPH_REMOVAL_ANCHORS + TEXT_REPLACEMENTS, ported transform.ts architecture
@@ -54,6 +57,18 @@ Key design invariants (do not violate in future edits):
 - System prompt: paragraph-anchor removal allowed (safe to drop whole non-essential self-referential paragraphs) + phrase replacement for load-bearing paragraphs.
 - `_get_claude_code_version()` reused from hermes (not reimplemented) so billing-header `cc_version` matches the User-Agent header hermes already sends — self-consistent fingerprint.
 
+## Dual install methods (added for Docker deployment support)
+
+Hermes's official Docker image (`nousresearch/hermes-agent`) has `/opt/hermes` (the Python venv) root-owned + read-only at runtime, with lazy installs explicitly disabled (`HERMES_DISABLE_LAZY_INSTALLS=1`) — confirmed by reading the actual Dockerfile + official docs. `docker exec ... pip install` does not work/persist. Only `/opt/data` (bind-mounted `~/.hermes`) is writable, and Hermes's own docs explicitly list `plugins/` as living there.
+
+This drove supporting BOTH install shapes from the SAME source tree (no duplication):
+- **Method A — pip/entry-point**: `pip install hermes-anthropic-auth` (or git+https) + `hermes plugins enable hermes-anthropic-auth`. For Docker: requires a derived image (`FROM nousresearch/hermes-agent:latest`, `USER root`, `RUN /opt/hermes/.venv/bin/python -m pip install ...`, `USER hermes`) — matches hermes's own documented "Durable installs — build a derived image" pattern exactly (Docker docs page: "Installing more tools in the container").
+- **Method B — directory-style drop-in**: `src/hermes_anthropic_auth/` ALSO ships its own `plugin.yaml` (kind: standalone — critically NOT `model-provider`, which would make Hermes's PluginManager skip calling `register(ctx)` entirely per its own discovery code) sitting flat alongside `__init__.py` and all sibling modules. Copy/symlink that exact folder to `~/.hermes/plugins/hermes-anthropic-auth/` (or Docker: same copy on the HOST's bind-mounted `~/.hermes/plugins/`, since that volume persists) — zero pip install, zero image rebuild, just a container restart to pick it up. `httpx` (our only runtime dep) is already guaranteed present since hermes-agent itself depends on it.
+
+Both methods resolve to the SAME plugin id `hermes-anthropic-auth` for `hermes plugins enable/disable/status` — verified by `tests/test_plugin_manifest.py` which cross-checks `plugin.yaml`'s `name`/`version` against `pyproject.toml`'s entry-point name/version, catching future drift.
+
+`tests/test_directory_style_loading.py` proves Method B actually works by SIMULATING hermes's own directory-plugin loader mechanism (`importlib.util.spec_from_file_location(name, __init__.py, submodule_search_locations=[plugin_dir])`) directly against the real `src/hermes_anthropic_auth/` folder — confirms relative imports between sibling modules (`from .patch import install` etc.) resolve correctly under that loading scheme, not just under normal `import hermes_anthropic_auth` package resolution (which is a materially different Python import code path).
+
 Repo: https://github.com/joaquincabrerasimoes/hermes-anthropic-auth. Reference implementation this was ported from: `referenceCode/opencode-anthropic-auth/` (gitignored, TypeScript/Bun, OpenCode plugin, same underlying Anthropic classifier problem, MIT licensed).
 
-Verified locally: `pytest tests/ -v` → 43 passed (Python 3.14.2 venv via PYTHONPATH=src, since actual `pip install -e .` correctly refuses on this constraint — pyproject.toml declares `requires-python = ">=3.11,<3.14"` matching hermes-agent's own constraint; this is intentional, not a bug). NOT live-tested against a real running hermes-agent instance or real Anthropic OAuth credentials — that requires the user's own environment/account.
+Verified locally: `pytest tests/ -v` → 50 passed (Python 3.14.2 venv via PYTHONPATH=src, since actual `pip install -e .` correctly refuses on this constraint — pyproject.toml declares `requires-python = ">=3.11,<3.14"` matching hermes-agent's own constraint; this is intentional, not a bug). NOT live-tested against a real running hermes-agent instance or real Anthropic OAuth credentials — that requires the user's own environment/account.

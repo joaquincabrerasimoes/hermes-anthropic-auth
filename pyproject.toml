@@ -25,6 +25,7 @@ hermes-anthropic-auth = "hermes_anthropic_auth"
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pyyaml>=6.0",
 ]
 
 [tool.hatch.build.targets.wheel]
