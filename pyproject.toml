@@ -30,6 +30,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["hermes_anthropic_auth"]
+# Bundled web-dashboard extension (manifest.json, JS bundle, backend routes) —
+# not .py files, so make sure hatchling packages them into the wheel.
+artifacts = ["hermes_anthropic_auth/dashboard/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,13 @@
+{
+  "name": "hermes-anthropic-auth",
+  "label": "Anthropic OAuth",
+  "description": "Log in with a Claude Pro/Max subscription and bind the credential to a Hermes profile",
+  "icon": "KeyRound",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/hermes-anthropic-auth",
+    "position": "after:config"
+  },
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}

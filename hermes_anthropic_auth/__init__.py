@@ -46,3 +46,40 @@ def register(ctx) -> None:
         register_cli(ctx)
     except Exception:  # noqa: BLE001 - diagnostic command is optional, never fatal
         logger.exception("hermes-anthropic-auth: failed to register CLI diagnostics")
+
+    try:
+        _install_dashboard_extension()
+    except Exception:  # noqa: BLE001 - dashboard UI is optional, never fatal
+        logger.exception("hermes-anthropic-auth: failed to install dashboard extension")
+
+
+def _install_dashboard_extension() -> None:
+    """Self-install this plugin's dashboard/ folder into
+    ``~/.hermes/plugins/hermes-anthropic-auth/dashboard/``.
+
+    The web dashboard's plugin discovery is directory-only — it does not
+    scan pip entry points (see hermes-agent docs, "Extending the
+    Dashboard": "Dashboard plugins are installed by directory layout, not
+    by pip entry point... not currently wired up"). Since this plugin ships
+    as a pure pip package, it copies its own bundled ``dashboard/``
+    directory onto disk every time it loads (idempotent overwrite) so the
+    dashboard tab shows up without a separate manual install step.
+    """
+    import shutil
+    from importlib import resources
+
+    from .profile_store import _root_hermes_home
+
+    target = _root_hermes_home() / "plugins" / "hermes-anthropic-auth" / "dashboard"
+
+    with resources.as_file(resources.files("hermes_anthropic_auth") / "dashboard") as src:
+        from pathlib import Path
+
+        src_path = Path(src)
+        if not src_path.is_dir():
+            logger.debug("hermes-anthropic-auth: no bundled dashboard/ found, skipping")
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src_path, target, dirs_exist_ok=True)
+
+    logger.info("hermes-anthropic-auth: dashboard extension installed at %s", target)

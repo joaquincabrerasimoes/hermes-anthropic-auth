@@ -135,7 +135,27 @@ hermes-anthropic-auth
 ```
 (Prefix with `docker exec hermes` if running in Docker.)
 
-If you haven't logged in with Claude Pro/Max yet, see the [native OAuth flow](https://hermes-agent.nousresearch.com/docs/developer-guide/adding-providers) — `hermes auth add anthropic --type oauth`, then set your model with `--provider anthropic --model claude-sonnet-4-6` or in `~/.hermes/config.yaml`. This plugin doesn't handle login; it only fixes what happens to requests after you're already authenticated.
+If you haven't logged in with Claude Pro/Max yet, either run `hermes auth add anthropic --type oauth` from the terminal, or use this plugin's own dashboard login (below) — both write to the same place and both work with the request-sanitizing fix above.
+
+## Web dashboard login
+
+This plugin also adds a tab to the Hermes web dashboard (`hermes dashboard`) for logging in with your Claude Pro/Max subscription entirely from the browser, and choosing which **Hermes profile** the credential is bound to.
+
+On every plugin load, it self-installs its bundled `dashboard/` extension into `~/.hermes/plugins/hermes-anthropic-auth/dashboard/` (dashboard plugin discovery is directory-only in Hermes — it doesn't scan pip entry points — so this plugin copies its own files there for you; no extra install step). Open `hermes dashboard`, refresh, and an **"Anthropic OAuth"** tab appears in the nav.
+
+**Flow:**
+
+1. Pick a profile from the dropdown (lists every profile on the machine — `default` plus anything under `~/.hermes/profiles/`).
+2. Click **Login with Claude** — a new tab opens to `claude.ai` to approve access.
+3. Anthropic shows you a `CODE#STATE` string. Copy it, paste it into the dashboard's field, click **Complete Login**.
+
+This is the same PKCE flow `hermes auth add anthropic --type oauth` uses under the hood — Anthropic's OAuth `redirect_uri` is hardcoded to a `console.anthropic.com` page (not this plugin's server), so there's no way to auto-capture the code via HTTP redirect; the copy/paste step is unavoidable, same as the CLI flow.
+
+The resulting credential is written straight into the selected profile's `<profile home>/auth.json` under `credential_pool.anthropic` — the exact format `hermes auth list` / `hermes auth add` already understand — so it shows up in `hermes auth list anthropic` and gets picked up by Hermes' normal credential resolution and rotation with zero extra wiring.
+
+**Caveats:**
+- Verified against the documented dashboard plugin contract and `auth.json` schema, not yet live-tested against a running `hermes dashboard` instance — flag any UI/API mismatch as an issue.
+- Automatic token *refresh* for dashboard-created credentials isn't wired up separately; it relies on Hermes' own credential-pool refresh path (`401` → refresh) working the same way it does for `hermes auth add`-created OAuth entries, since the on-disk shape is identical.
 
 ## Compatibility
 
